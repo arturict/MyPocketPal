@@ -1,19 +1,57 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using System;
 using System.Collections.Generic;
-using Microsoft.AspNetCore.Mvc;
+using System.Data;
+using Microsoft.Data.SqlClient;
 using WebApplication_REST.Models;
+
 namespace WebApplication_REST.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
     public class CategoryController : ControllerBase
     {
-        private List<Category> _categories = new List<Category>(); // Eine temporäre Liste, um Kategoriedaten zu speichern. In der Realität würde dies in einer Datenbank gespeichert.
+        private readonly string _connectionString;
+
+        public CategoryController(IConfiguration configuration)
+        {
+            _connectionString = configuration.GetConnectionString("MyDbConnection");
+        }
 
         [HttpGet]
         public IEnumerable<Category> Get()
         {
-            return _categories;
+            List<Category> categories = new List<Category>();
+
+            using (SqlConnection connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+
+                string sqlQuery = "SELECT * FROM Categories";
+
+                using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                {
+                    using (SqlDataReader reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            Category category = new Category
+                            {
+                                Id = Convert.ToInt32(reader["Id"].ToString()),
+                                Name = reader["Name"].ToString(),
+                                Description = reader["Description"].ToString()
+                            };
+
+                            categories.Add(category);
+                        }
+                    }
+                }
+
+                connection.Close();
+            }
+
+            return categories;
         }
 
         [HttpPost]
@@ -21,66 +59,59 @@ namespace WebApplication_REST.Controllers
         {
             try
             {
-                // Hier können Sie Validierungen durchführen und die Kategorie in der Datenbank speichern.
-                category.Id = Guid.NewGuid(); // Eindeutige ID für die Kategorie.
-                _categories.Add(category); // Hinzufügen der Kategorie zur temporären Liste (in der Realität würde dies in der Datenbank erfolgen).
-                return Ok(category); // Rückgabe der erstellten Kategorie mit Statuscode 200 (OK).
+                using (SqlConnection connection = new SqlConnection(_connectionString))
+                {
+                    connection.Open();
+
+                    string sqlQuery = "INSERT INTO Categories (Name, Description) VALUES (@Name, @Description)";
+
+                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                    {
+                        command.Parameters.AddWithValue("@Name", category.Name);
+                        command.Parameters.AddWithValue("@Description", category.Description);
+
+                        command.ExecuteNonQuery();
+                    }
+
+                    connection.Close();
+                }
+
+                return Ok(category);
             }
             catch (Exception ex)
             {
-                // Hier können Sie Fehlerbehandlung und Logging hinzufügen.
-                return BadRequest("Fehler beim Erstellen der Kategorie: " + ex.Message); // Rückgabe eines Fehlerstatuscodes mit einer Fehlermeldung.
+                return BadRequest("Fehler beim Erstellen der Kategorie: " + ex.Message);
             }
         }
-
-        [HttpPut]
-        public ActionResult<Category> Put(Category category)
+        [HttpGet("category/{categoryName}")]
+        public ActionResult<int?> GetCategoryIdByName(string categoryName)
         {
             try
             {
-                // Hier können Sie Validierungen durchführen und die Kategorie in der Datenbank aktualisieren.
-                var existingCategory = _categories.Find(c => c.Id == category.Id);
-                if (existingCategory != null)
+                using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    existingCategory.Name = category.Name;
-                    existingCategory.Description = category.Description;
-                    // Aktualisieren Sie weitere Kategoriedetails nach Bedarf.
-                    return Ok(existingCategory);
-                }
-                else
-                {
-                    return NotFound("Kategorie nicht gefunden");
+                    connection.Open();
+
+                    string sqlQuery = "SELECT Id FROM Categories WHERE Name = @CategoryName";
+
+                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                    {
+                        command.Parameters.AddWithValue("@CategoryName", categoryName);
+
+                        var categoryId = command.ExecuteScalar() as int?;
+
+                        return Ok(categoryId);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 // Hier können Sie Fehlerbehandlung und Logging hinzufügen.
-                return BadRequest("Fehler beim Aktualisieren der Kategorie: " + ex.Message);
+                return BadRequest("Fehler beim Abrufen der Kategorie-ID: " + ex.Message);
             }
         }
 
-        [HttpDelete("{id}")]
-        public ActionResult Delete(Guid id)
-        {
-            try
-            {
-                // Hier können Sie die Kategorie in der Datenbank löschen.
-                var existingCategory = _categories.Find(c => c.Id == id);
-                if (existingCategory != null)
-                {
-                    _categories.Remove(existingCategory);
-                    return NoContent(); // Erfolgreiche Löschung mit Statuscode 204 (NoContent).
-                }
-                else
-                {
-                    return NotFound("Kategorie nicht gefunden");
-                }
-            }
-            catch (Exception ex)
-            {
-                // Hier können Sie Fehlerbehandlung und Logging hinzufügen.
-                return BadRequest("Fehler beim Löschen der Kategorie: " + ex.Message);
-            }
-        }
+
+
     }
 }

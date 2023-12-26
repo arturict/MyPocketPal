@@ -38,7 +38,7 @@ namespace WebApplication_REST.Controllers
                         {
                             User user = new User
                             {
-                                Id = Guid.Parse(reader["Id"].ToString()),
+                                Id = Convert.ToInt32(reader["Id"].ToString()),
                                 Username = reader["Username"].ToString(),
                                 Email = reader["Email"].ToString()
                             };
@@ -59,17 +59,15 @@ namespace WebApplication_REST.Controllers
         {
             try
             {
-                user.Id = Guid.NewGuid(); // Eindeutige ID für den Benutzer.
 
                 using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
                     connection.Open();
 
-                    string sqlQuery = "INSERT INTO Users (Id, Username, Email) VALUES (@Id, @Username, @Email)";
+                    string sqlQuery = "INSERT INTO Users ( Username, Email) VALUES ( @Username, @Email)";
 
                     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                     {
-                        command.Parameters.AddWithValue("@Id", user.Id);
                         command.Parameters.AddWithValue("@Username", user.Username);
                         command.Parameters.AddWithValue("@Email", user.Email);
 
@@ -79,11 +77,11 @@ namespace WebApplication_REST.Controllers
                     connection.Close();
                 }
 
-                return Ok(user); // Rückgabe des erstellten Benutzers mit Statuscode 200 (OK).
+                return Ok(user); 
             }
             catch (Exception ex)
             {
-                return BadRequest("Fehler beim Erstellen des Benutzers: " + ex.Message); // Rückgabe eines Fehlerstatuscodes mit einer Fehlermeldung.
+                return BadRequest("Fehler beim Erstellen des Benutzers: " + ex.Message); 
             }
         }
 
@@ -123,8 +121,9 @@ namespace WebApplication_REST.Controllers
             }
         }
 
+
         [HttpDelete("{id}")]
-        public ActionResult Delete(Guid id)
+        public ActionResult Delete(int id)
         {
             try
             {
@@ -156,5 +155,101 @@ namespace WebApplication_REST.Controllers
                 return BadRequest("Fehler beim Löschen des Benutzers: " + ex.Message);
             }
         }
+
+        [HttpPost("login")]
+        public ActionResult Login([FromBody] LoginModel loginModel)
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(_connectionString))
+                {
+                    connection.Open();
+
+                    string sqlQuery = "SELECT Id, Username, Email FROM Users WHERE Username = @Username AND Password = @Password";
+
+                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                    {
+                        command.Parameters.AddWithValue("@Username", loginModel.username);
+                        command.Parameters.AddWithValue("@Password", loginModel.password);
+
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                User user = new User
+                                {
+                                    Username = reader["Username"].ToString(),
+                                    Email = reader["Email"].ToString()
+                                };
+
+                                return Ok(user); // Erfolgreicher Login
+                            }
+                        }
+                    }
+                }
+
+                return Unauthorized(); // Login fehlgeschlagen
+            }
+            catch (Exception ex)
+            {
+                return BadRequest("Fehler beim Login: " + ex.Message);
+            }
+        }
+
+        [HttpPost("register")]
+        public ActionResult Register([FromBody] RegisterModel registerModel)
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(_connectionString))
+                {
+                    connection.Open();
+
+                    string checkUserQuery = "SELECT COUNT(*) FROM Users WHERE Username = @Username";
+                    using (SqlCommand checkUserCommand = new SqlCommand(checkUserQuery, connection))
+                    {
+                        checkUserCommand.Parameters.AddWithValue("@Username", registerModel.username);
+                        int userExists = (int)checkUserCommand.ExecuteScalar();
+
+                        if (userExists > 0)
+                        {
+                            return BadRequest("Benutzername bereits vergeben.");
+                        }
+                    }
+
+                    string sqlQuery = "INSERT INTO Users (Username, Email, Password) VALUES (@Username, @Email, @Password)";
+                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                    {
+                        command.Parameters.AddWithValue("@Username", registerModel.username);
+                        command.Parameters.AddWithValue("@Email", registerModel.email);
+                        command.Parameters.AddWithValue("@Password", registerModel.password); 
+
+                        command.ExecuteNonQuery();
+                    }
+
+                    return Ok("Registrierung erfolgreich.");
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "Interner Serverfehler: " + ex.Message);
+            }
+        }
+
+
+        public class LoginModel
+        {
+            public string username { get; set; }
+            public string password { get; set; }
+        }
+        public class RegisterModel
+        {
+            public string username { get; set; }
+            public string email { get; set; }
+            public string password { get; set; }
+
+        }
+
+
     }
 }
