@@ -40,7 +40,6 @@ namespace WebApplication_REST.Controllers
                             {
                                 Id = Convert.ToInt32(reader["Id"].ToString()),
                                 Name = reader["Name"].ToString(),
-                                Description = reader["Description"].ToString()
                             };
 
                             categories.Add(category);
@@ -63,12 +62,11 @@ namespace WebApplication_REST.Controllers
                 {
                     connection.Open();
 
-                    string sqlQuery = "INSERT INTO Categories (Name, Description) VALUES (@Name, @Description)";
+                    string sqlQuery = "INSERT INTO Categories (Name) VALUES (@Name)";
 
                     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Name", category.Name);
-                        command.Parameters.AddWithValue("@Description", category.Description);
 
                         command.ExecuteNonQuery();
                     }
@@ -83,7 +81,7 @@ namespace WebApplication_REST.Controllers
                 return BadRequest("Fehler beim Erstellen der Kategorie: " + ex.Message);
             }
         }
-        [HttpGet("category/{categoryName}")]
+        [HttpGet("{categoryName}")]
         public ActionResult<int?> GetCategoryIdByName(string categoryName)
         {
             try
@@ -106,7 +104,6 @@ namespace WebApplication_REST.Controllers
             }
             catch (Exception ex)
             {
-                // Hier können Sie Fehlerbehandlung und Logging hinzufügen.
                 return BadRequest("Fehler beim Abrufen der Kategorie-ID: " + ex.Message);
             }
         }

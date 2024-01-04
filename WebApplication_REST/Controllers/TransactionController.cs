@@ -13,7 +13,7 @@ namespace WebApplication_REST.Controllers
     [ApiController]
     public class TransactionController : ControllerBase
     {
-        private readonly string _connectionString; // Verbindungszeichenfolge zur Datenbank
+        private readonly string _connectionString; 
 
         public TransactionController(IConfiguration configuration)
         {
@@ -21,44 +21,55 @@ namespace WebApplication_REST.Controllers
         }
 
         [HttpGet("{userId}")]
-        public IEnumerable<Transaction> Get(int userId)
+        public ActionResult<IEnumerable<Transaction>> Get(Guid userId)
         {
-            List<Transaction> transactions = new List<Transaction>();
-
-            using (SqlConnection connection = new SqlConnection(_connectionString))
+            try
             {
-                connection.Open();
+                List<Transaction> transactions = new List<Transaction>();
 
-                string sqlQuery = "SELECT * FROM Transactions WHERE UserId = @UserId";
-
-                using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    command.Parameters.AddWithValue("@UserId", userId);
+                    connection.Open();
+                    string sqlQuery = "SELECT * FROM Transactions WHERE UserId = @UserId";
 
-                    using (SqlDataReader reader = command.ExecuteReader())
+                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                     {
-                        while (reader.Read())
-                        {
-                            Transaction transaction = new Transaction
-                            {
-                                Id = Convert.ToInt32(reader["Id"].ToString()),
-                                Date = DateTime.Parse(reader["Date"].ToString()),
-                                Amount = decimal.Parse(reader["Amount"].ToString()),
-                                Description = reader["Description"].ToString(),
-                                CategoryId = Convert.ToInt32(reader["CategoryId"].ToString()),
-                                UserId = Convert.ToInt32(reader["UserId"].ToString()) // Setzen Sie die UserId entsprechend
-                            };
+                        command.Parameters.AddWithValue("@UserId", userId);
 
-                            transactions.Add(transaction);
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                Transaction transaction = new Transaction
+                                {
+                                    Id = Convert.ToInt32(reader["Id"]),
+                                    Date = DateTime.Parse(reader["Date"].ToString()),
+                                    Amount = decimal.Parse(reader["Amount"].ToString()),
+                                    Description = reader["Description"].ToString(),
+                                    CategoryId = Convert.ToInt32(reader["CategoryId"]),
+                                    UserId = Guid.Parse(reader["UserId"].ToString())
+                                };
+
+                                transactions.Add(transaction);
+                            }
                         }
                     }
                 }
 
-                connection.Close();
+                return transactions;
             }
-
-            return transactions;
+            catch (SqlException ex)
+            {
+                // Spezifischer Fehler für SQL-Probleme
+                return StatusCode(500, "Datenbankfehler: " + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                // Generischer Fehler für alle anderen Probleme
+                return StatusCode(500, "Ein interner Serverfehler ist aufgetreten: " + ex.Message);
+            }
         }
+
 
 
         [HttpPost]
@@ -69,7 +80,7 @@ namespace WebApplication_REST.Controllers
                 // Ermittle die UserId des aktuellen Benutzers aus dem Authentifizierungstoken
                 var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
 
-                if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int currentUserId))
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid currentUserId))
                 {
                     return BadRequest("Benutzer nicht authentifiziert oder ungültige UserId im Token.");
                 }
