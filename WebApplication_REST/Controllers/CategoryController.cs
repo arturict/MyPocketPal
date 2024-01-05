@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Data;
 using Microsoft.Data.SqlClient;
 using WebApplication_REST.Models;
+using System.Security.Claims;
 
 namespace WebApplication_REST.Controllers
 {
@@ -22,27 +23,33 @@ namespace WebApplication_REST.Controllers
         [HttpGet]
         public IEnumerable<Category> Get()
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return Enumerable.Empty<Category>();
+            }
+
             List<Category> categories = new List<Category>();
 
             using (SqlConnection connection = new SqlConnection(_connectionString))
             {
                 connection.Open();
 
-                string sqlQuery = "SELECT * FROM Categories";
-
+                string sqlQuery = "SELECT * FROM Categories WHERE UserId = @UserId";
                 using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                 {
+                    command.Parameters.AddWithValue("@UserId", userId);
+
                     using (SqlDataReader reader = command.ExecuteReader())
                     {
                         while (reader.Read())
                         {
-                            Category category = new Category
+                            categories.Add(new Category
                             {
                                 Id = Convert.ToInt32(reader["Id"].ToString()),
                                 Name = reader["Name"].ToString(),
-                            };
-
-                            categories.Add(category);
+                                UserId = userId
+                            });
                         }
                     }
                 }
@@ -53,20 +60,29 @@ namespace WebApplication_REST.Controllers
             return categories;
         }
 
+
         [HttpPost]
         public ActionResult<Category> Post(Category category)
         {
             try
             {
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid currentUserId))
+                {
+                    return BadRequest("Benutzer nicht authentifiziert oder ungültige UserId im Token.");
+                }
+
                 using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
                     connection.Open();
 
-                    string sqlQuery = "INSERT INTO Categories (Name) VALUES (@Name)";
+                    string sqlQuery = "INSERT INTO Categories (Name, UserId, IsIncome) VALUES (@Name, @UserId, @IsIncome)";
 
                     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Name", category.Name);
+                        command.Parameters.AddWithValue("@UserId", currentUserId);
+                        command.Parameters.AddWithValue("@IsIncome", category.IsIncome);
 
                         command.ExecuteNonQuery();
                     }
@@ -81,32 +97,79 @@ namespace WebApplication_REST.Controllers
                 return BadRequest("Fehler beim Erstellen der Kategorie: " + ex.Message);
             }
         }
-        [HttpGet("{categoryName}")]
-        public ActionResult<int?> GetCategoryIdByName(string categoryName)
+
+
+        [HttpGet("search/{categoryName}/{isIncome}")]
+        public async Task<ActionResult<int>> SearchCategory(string categoryName, bool isIncome)
         {
-            try
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid currentUserId))
             {
-                using (SqlConnection connection = new SqlConnection(_connectionString))
+                return BadRequest("Benutzer nicht authentifiziert oder ungültige UserId im Token.");
+            }
+
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                var query = "SELECT Id FROM Categories WHERE Name = @Name AND UserId = @UserId AND IsIncome = @IsIncome";
+
+                using (var command = new SqlCommand(query, connection))
                 {
-                    connection.Open();
+                    command.Parameters.AddWithValue("@Name", categoryName);
+                    command.Parameters.AddWithValue("@UserId", currentUserId);
+                    command.Parameters.AddWithValue("@IsIncome", isIncome);
+                    var result = await command.ExecuteScalarAsync();
 
-                    string sqlQuery = "SELECT Id FROM Categories WHERE Name = @CategoryName";
-
-                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                    if (result != null)
                     {
-                        command.Parameters.AddWithValue("@CategoryName", categoryName);
-
-                        var categoryId = command.ExecuteScalar() as int?;
-
-                        return Ok(categoryId);
+                        return Ok((int)result);
                     }
                 }
             }
+
+            return NotFound("Kategorie nicht gefunden.");
+        }
+
+
+
+        [HttpPost("create")]
+        public async Task<ActionResult> CreateCategory([FromBody] Category category)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid currentUserId))
+            {
+                return BadRequest("Benutzer nicht authentifiziert oder ungültige UserId im Token.");
+            }
+
+            category.UserId = currentUserId;
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    var query = "INSERT INTO Categories (Name, UserId, IsIncome) VALUES (@Name, @UserId, @IsIncome)";
+
+                    using (var command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@Name", category.Name);
+                        command.Parameters.AddWithValue("@UserId", category.UserId);
+                        command.Parameters.AddWithValue("@IsIncome", category.IsIncome);
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+
+                return Ok("Kategorie erstellt.");
+            }
             catch (Exception ex)
             {
-                return BadRequest("Fehler beim Abrufen der Kategorie-ID: " + ex.Message);
+                // Hier wird der Fehler geloggt
+                Console.WriteLine("Fehler beim Erstellen der Kategorie: " + ex.Message);
+                return StatusCode(500, "Interner Serverfehler beim Erstellen der Kategorie.");
             }
         }
+
+
+
 
 
 

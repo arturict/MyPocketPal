@@ -20,18 +20,22 @@ namespace WebApplication_REST.Controllers
             _connectionString = configuration.GetConnectionString("MyDbConnection");
         }
 
-        [HttpGet("{userId}")]
-        public ActionResult<IEnumerable<Transaction>> Get(Guid userId)
+        [HttpGet]
+        public ActionResult<IEnumerable<TransactionGet>> Get()
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return BadRequest("Benutzeridentifikation fehlgeschlagen. Stellen Sie sicher, dass Sie angemeldet sind.");
+            }
+
             try
             {
-                List<Transaction> transactions = new List<Transaction>();
-
+                List<TransactionGet> transactions = new List<TransactionGet>();
                 using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
                     connection.Open();
-                    string sqlQuery = "SELECT * FROM Transactions WHERE UserId = @UserId";
-
+                    string sqlQuery = "SELECT t.*, c.Name as CategoryName FROM Transactions t LEFT JOIN Categories c ON t.CategoryId = c.Id WHERE t.UserId = @UserId";
                     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                     {
                         command.Parameters.AddWithValue("@UserId", userId);
@@ -40,14 +44,15 @@ namespace WebApplication_REST.Controllers
                         {
                             while (reader.Read())
                             {
-                                Transaction transaction = new Transaction
+                                TransactionGet transaction = new TransactionGet
                                 {
-                                    Id = Convert.ToInt32(reader["Id"]),
-                                    Date = DateTime.Parse(reader["Date"].ToString()),
-                                    Amount = decimal.Parse(reader["Amount"].ToString()),
-                                    Description = reader["Description"].ToString(),
-                                    CategoryId = Convert.ToInt32(reader["CategoryId"]),
-                                    UserId = Guid.Parse(reader["UserId"].ToString())
+                                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                                    Date = reader.GetDateTime(reader.GetOrdinal("Date")),
+                                    Amount = reader.GetDecimal(reader.GetOrdinal("Amount")),
+                                    Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
+                                    CategoryName = reader.IsDBNull(reader.GetOrdinal("CategoryName")) ? null : reader.GetString(reader.GetOrdinal("CategoryName")),
+                                    IsIncome = reader.GetBoolean(reader.GetOrdinal("IsIncome")),
+                                    UserId = userId
                                 };
 
                                 transactions.Add(transaction);
@@ -60,13 +65,68 @@ namespace WebApplication_REST.Controllers
             }
             catch (SqlException ex)
             {
-                // Spezifischer Fehler für SQL-Probleme
+                return StatusCode(500, "Datenbankfehler aufgetreten: " + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "Interner Serverfehler: " + ex.Message);
+            }
+        }
+
+        [HttpGet("category/{categoryId}")]
+        public ActionResult<IEnumerable<TransactionGet>> GetTransactionsByCategory(int categoryId)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return BadRequest("Benutzeridentifikation fehlgeschlagen. Stellen Sie sicher, dass Sie angemeldet sind.");
+            }
+
+            try
+            {
+                List<TransactionGet> transactions = new List<TransactionGet>();
+                using (SqlConnection connection = new SqlConnection(_connectionString))
+                {
+                    connection.Open();
+                    string sqlQuery = "SELECT t.*, c.Name as CategoryName, c.IsIncome FROM Transactions t LEFT JOIN Categories c ON t.CategoryId = c.Id WHERE t.UserId = @UserId AND t.CategoryId = @CategoryId";
+
+                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserId", userId);
+                        command.Parameters.AddWithValue("@CategoryId", categoryId);
+
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                TransactionGet transaction = new TransactionGet
+                                {
+                                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                                    Date = reader.GetDateTime(reader.GetOrdinal("Date")),
+                                    Amount = reader.GetDecimal(reader.GetOrdinal("Amount")),
+                                    Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
+                                    CategoryName = reader.IsDBNull(reader.GetOrdinal("CategoryName")) ? null : reader.GetString(reader.GetOrdinal("CategoryName")),
+                                    IsIncome = reader.GetBoolean(reader.GetOrdinal("IsIncome")), 
+                                    UserId = userId
+                                };
+
+                                transactions.Add(transaction);
+                            }
+
+
+                        }
+                    }
+                }
+
+                return transactions;
+            }
+            catch (SqlException ex)
+            {
                 return StatusCode(500, "Datenbankfehler: " + ex.Message);
             }
             catch (Exception ex)
             {
-                // Generischer Fehler für alle anderen Probleme
-                return StatusCode(500, "Ein interner Serverfehler ist aufgetreten: " + ex.Message);
+                return StatusCode(500, "Interner Serverfehler: " + ex.Message);
             }
         }
 
@@ -77,22 +137,22 @@ namespace WebApplication_REST.Controllers
         {
             try
             {
-                // Ermittle die UserId des aktuellen Benutzers aus dem Authentifizierungstoken
                 var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
-
                 if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid currentUserId))
                 {
                     return BadRequest("Benutzer nicht authentifiziert oder ungültige UserId im Token.");
                 }
-
-                // Setze die UserId für die Transaktion
+                if (transaction.Date == null || transaction.Date == DateTime.MinValue)
+                {
+                    transaction.Date = DateTime.Now;
+                }
                 transaction.UserId = currentUserId;
 
                 using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
                     connection.Open();
 
-                    string sqlQuery = "INSERT INTO Transactions (Date, Amount, Description, CategoryId, UserId) VALUES (@Date, @Amount, @Description, @CategoryId, @UserId)";
+                    string sqlQuery = "INSERT INTO Transactions (Date, Amount, Description, CategoryId, UserId, IsIncome) VALUES (@Date, @Amount, @Description, @CategoryId, @UserId, @IsIncome)";
 
                     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                     {
@@ -100,7 +160,8 @@ namespace WebApplication_REST.Controllers
                         command.Parameters.AddWithValue("@Amount", transaction.Amount);
                         command.Parameters.AddWithValue("@Description", transaction.Description);
                         command.Parameters.AddWithValue("@CategoryId", transaction.CategoryId);
-                        command.Parameters.AddWithValue("@UserId", transaction.UserId); // Verwende die UserId
+                        command.Parameters.AddWithValue("@UserId", transaction.UserId);
+                        command.Parameters.AddWithValue("@IsIncome", transaction.IsIncome);
 
                         command.ExecuteNonQuery();
                     }
@@ -115,6 +176,7 @@ namespace WebApplication_REST.Controllers
                 return BadRequest("Fehler beim Erstellen der Transaktion: " + ex.Message);
             }
         }
+
 
         [HttpPut]
         public ActionResult<Transaction> Put(Transaction transaction)
@@ -145,93 +207,59 @@ namespace WebApplication_REST.Controllers
                     connection.Close();
                 }
 
-                return Ok(transaction); // Rückgabe der aktualisierten Transaktion mit Statuscode 200 (OK).
+                return Ok(transaction); 
             }
             catch (Exception ex)
             {
-                // Hier können Sie Fehlerbehandlung und Logging hinzufügen.
                 return BadRequest("Fehler beim Aktualisieren der Transaktion: " + ex.Message);
             }
         }
 
         [HttpDelete("{id}")]
-        public ActionResult Delete(Guid id)
+        public ActionResult Delete(int id)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid currentUserId))
+            {
+                return BadRequest("Benutzeridentifikation fehlgeschlagen. Stellen Sie sicher, dass Sie angemeldet sind.");
+            }
+
             try
             {
                 using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
                     connection.Open();
 
-                    string sqlQuery = "DELETE FROM Transactions WHERE Id = @Id";
+                    string sqlQuery = "DELETE FROM Transactions WHERE Id = @Id AND UserId = @UserId";
 
                     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Id", id);
+                        command.Parameters.AddWithValue("@UserId", currentUserId);
 
                         int rowsAffected = command.ExecuteNonQuery();
 
                         if (rowsAffected == 0)
                         {
-                            return NotFound("Transaktion nicht gefunden");
+                            return NotFound("Transaktion mit der angegebenen ID für den aktuellen Benutzer nicht gefunden.");
                         }
                     }
-
-                    connection.Close();
                 }
 
-                return NoContent(); // Erfolgreiche Löschung mit Statuscode 204 (NoContent).
+                return NoContent();
+            }
+            catch (SqlException ex)
+            {
+                return StatusCode(500, "Datenbankfehler aufgetreten: " + ex.Message);
             }
             catch (Exception ex)
             {
-                // Hier können Sie Fehlerbehandlung und Logging hinzufügen.
-                return BadRequest("Fehler beim Löschen der Transaktion: " + ex.Message);
+                return BadRequest("Unbekannter Fehler beim Löschen der Transaktion: " + ex.Message);
             }
         }
-        [HttpGet("user/{userId}")]
-        public ActionResult<IEnumerable<Transaction>> GetTransactionsByUserId(int userId)
-        {
-            List<Transaction> userTransactions = new List<Transaction>();
-            try
-            {
-                using (SqlConnection connection = new SqlConnection(_connectionString))
-                {
-                    connection.Open();
 
-                    string sqlQuery = "SELECT * FROM Transactions WHERE UserId = @UserId";
 
-                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@UserId", userId);
 
-                        using (SqlDataReader reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                Transaction transaction = new Transaction
-                                {
-                                    Id = Convert.ToInt32(reader["Id"].ToString()),
-                                    Date = DateTime.Parse(reader["Date"].ToString()),
-                                    Amount = decimal.Parse(reader["Amount"].ToString()),
-                                    Description = reader["Description"].ToString(),
-                                };
-                                userTransactions.Add(transaction);
-                            }
-                        }
-                    }
-                    connection.Close();
-                }
-                if (!userTransactions.Any())
-                {
-                    return NotFound("No transactions found for the provided user ID.");
-                }
-                return Ok(userTransactions);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest("Error while retrieving transactions: " + ex.Message);
-            }
-        }
 
     }
 }
