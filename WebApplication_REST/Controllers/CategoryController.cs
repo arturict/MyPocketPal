@@ -21,7 +21,7 @@ namespace WebApplication_REST.Controllers
         }
 
         [HttpGet]
-        public IEnumerable<Category> Get()
+        public IEnumerable<Category> Get(bool? isIncome = null)
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
             if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
@@ -35,10 +35,19 @@ namespace WebApplication_REST.Controllers
             {
                 connection.Open();
 
-                string sqlQuery = "SELECT * FROM Categories WHERE UserId = @UserId";
+                string sqlQuery = "SELECT Id, Name, IsIncome FROM Categories WHERE UserId = @UserId";
+                if (isIncome.HasValue)
+                {
+                    sqlQuery += " AND IsIncome = @IsIncome";
+                }
+
                 using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                 {
                     command.Parameters.AddWithValue("@UserId", userId);
+                    if (isIncome.HasValue)
+                    {
+                        command.Parameters.AddWithValue("@IsIncome", isIncome.Value);
+                    }
 
                     using (SqlDataReader reader = command.ExecuteReader())
                     {
@@ -46,8 +55,9 @@ namespace WebApplication_REST.Controllers
                         {
                             categories.Add(new Category
                             {
-                                Id = Convert.ToInt32(reader["Id"].ToString()),
+                                Id = Convert.ToInt32(reader["Id"]),
                                 Name = reader["Name"].ToString(),
+                                IsIncome = Convert.ToBoolean(reader["IsIncome"]),
                                 UserId = userId
                             });
                         }
@@ -59,6 +69,9 @@ namespace WebApplication_REST.Controllers
 
             return categories;
         }
+
+
+
 
 
         [HttpPost]
