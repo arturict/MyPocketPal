@@ -129,6 +129,67 @@ namespace WebApplication_REST.Controllers
                 return StatusCode(500, "Interner Serverfehler: " + ex.Message);
             }
         }
+        [HttpGet("transaction")]
+        public ActionResult<IEnumerable<TransactionGet>> GetTransactions(bool? isIncome = null)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return BadRequest("Benutzeridentifikation fehlgeschlagen. Stellen Sie sicher, dass Sie angemeldet sind.");
+            }
+
+            try
+            {
+                List<TransactionGet> transactions = new List<TransactionGet>();
+                using (SqlConnection connection = new SqlConnection(_connectionString))
+                {
+                    connection.Open();
+                    string sqlQuery = "SELECT t.*, c.Name as CategoryName, c.IsIncome FROM Transactions t LEFT JOIN Categories c ON t.CategoryId = c.Id WHERE t.UserId = @UserId";
+                    if (isIncome.HasValue)
+                    {
+                        sqlQuery += " AND c.IsIncome = @IsIncome";
+                    }
+
+                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserId", userId);
+                        if (isIncome.HasValue)
+                        {
+                            command.Parameters.AddWithValue("@IsIncome", isIncome.Value);
+                        }
+
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                TransactionGet transaction = new TransactionGet
+                                {
+                                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                                    Date = reader.GetDateTime(reader.GetOrdinal("Date")),
+                                    Amount = reader.GetDecimal(reader.GetOrdinal("Amount")),
+                                    Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
+                                    CategoryName = reader.IsDBNull(reader.GetOrdinal("CategoryName")) ? null : reader.GetString(reader.GetOrdinal("CategoryName")),
+                                    IsIncome = reader.GetBoolean(reader.GetOrdinal("IsIncome")),
+                                    UserId = userId
+                                };
+
+                                transactions.Add(transaction);
+                            }
+                        }
+                    }
+                }
+
+                return transactions;
+            }
+            catch (SqlException ex)
+            {
+                return StatusCode(500, "Datenbankfehler: " + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "Interner Serverfehler: " + ex.Message);
+            }
+        }
 
 
 
