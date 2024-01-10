@@ -139,6 +139,48 @@ namespace WebApplication_REST.Controllers
                 return StatusCode(500, "Interner Serverfehler: " + ex.Message);
             }
         }
+        [HttpGet("balance")]
+        public ActionResult<decimal> GetUserBalance()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return BadRequest("Benutzeridentifikation fehlgeschlagen. Stellen Sie sicher, dass Sie angemeldet sind.");
+            }
+
+            decimal balance = 0;
+
+            using (SqlConnection connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+                string sqlQuery = "SELECT Amount, IsIncome FROM Transactions WHERE UserId = @UserId";
+
+                using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                {
+                    command.Parameters.AddWithValue("@UserId", userId);
+
+                    using (SqlDataReader reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            decimal amount = reader.GetDecimal(reader.GetOrdinal("Amount"));
+                            bool isIncome = reader.GetBoolean(reader.GetOrdinal("IsIncome"));
+
+                            if (isIncome)
+                            {
+                                balance += amount;
+                            }
+                            else
+                            {
+                                balance -= amount;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return Ok(balance);
+        }
 
 
 
