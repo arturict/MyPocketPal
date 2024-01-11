@@ -177,16 +177,11 @@ namespace WebApplication_REST.Controllers
             }
             catch (Exception ex)
             {
-                // Hier wird der Fehler geloggt
                 Console.WriteLine("Fehler beim Erstellen der Kategorie: " + ex.Message);
                 return StatusCode(500, "Interner Serverfehler beim Erstellen der Kategorie.");
             }
         }
-
-
-
-
-
+        
 
     }
 }

@@ -6,7 +6,8 @@
         public string Currency { get; set; }
         public bool ShowWarnings { get; set; } = true;
         public bool NotificationsEnabled { get; set; } = false;
+        public decimal? MonthlyBudget { get; set; } 
 
-        // Weitere Einstellungen können hier hinzugefügt werden
+
     }
 }

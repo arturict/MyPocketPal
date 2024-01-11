@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Security.Claims;
+using System.Text;
 using WebApplication_REST.Models;
 
 namespace WebApplication_REST.Controllers
@@ -15,6 +16,7 @@ namespace WebApplication_REST.Controllers
         {
             _connectionString = configuration.GetConnectionString("MyDbConnection");
         }
+        decimal totalBalance = 0m;
 
         [HttpGet]
         public ActionResult<IEnumerable<TransactionGet>> Get()
@@ -52,12 +54,14 @@ namespace WebApplication_REST.Controllers
                                 };
 
                                 transactions.Add(transaction);
+
+                                totalBalance += transaction.IsIncome ? transaction.Amount : -transaction.Amount;
                             }
                         }
                     }
                 }
 
-                return transactions;
+                return Ok(new { Transactions = transactions, TotalBalance = totalBalance });
             }
             catch (SqlException ex)
             {
@@ -77,6 +81,7 @@ namespace WebApplication_REST.Controllers
             {
                 return BadRequest("Benutzeridentifikation fehlgeschlagen. Stellen Sie sicher, dass Sie angemeldet sind.");
             }
+            decimal totalBalance = 0m;
 
             try
             {
@@ -123,12 +128,14 @@ namespace WebApplication_REST.Controllers
                                 };
 
                                 transactions.Add(transaction);
+
+                                totalBalance += transaction.IsIncome ? transaction.Amount : -transaction.Amount;
                             }
                         }
                     }
                 }
 
-                return transactions;
+                return Ok(new { Transactions = transactions, TotalBalance = totalBalance });
             }
             catch (SqlException ex)
             {
@@ -181,6 +188,7 @@ namespace WebApplication_REST.Controllers
 
             return Ok(balance);
         }
+        
 
 
 
@@ -311,9 +319,6 @@ namespace WebApplication_REST.Controllers
                 return BadRequest("Unbekannter Fehler beim Löschen der Transaktion: " + ex.Message);
             }
         }
-
-
-
 
     }
 }
