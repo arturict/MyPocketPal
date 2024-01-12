@@ -132,7 +132,7 @@ namespace WebApplication_REST.Controllers
                     }
                 }
 
-                var insertQuery = "INSERT INTO Settings (UserId, Currency, ShowWarnings, NotificationsEnabled) VALUES (@UserId, 'CHF', 1, 0, )";
+                var insertQuery = "INSERT INTO Settings (UserId, Currency, ShowWarnings, NotificationsEnabled) VALUES (@UserId, 'CHF', 1, 0)";
                 using (var insertCommand = new SqlCommand(insertQuery, connection))
                 {
                     insertCommand.Parameters.AddWithValue("@UserId", currentUserId);

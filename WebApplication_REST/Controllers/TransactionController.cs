@@ -72,6 +72,61 @@ namespace WebApplication_REST.Controllers
                 return StatusCode(500, "Interner Serverfehler: " + ex.Message);
             }
         }
+        [HttpGet("{transactionId}")]
+        public ActionResult<TransactionGet> GetTransactionById(int transactionId)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return BadRequest("Benutzeridentifikation fehlgeschlagen. Stellen Sie sicher, dass Sie angemeldet sind.");
+            }
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(_connectionString))
+                {
+                    connection.Open();
+                    string sqlQuery = "SELECT t.*, c.Name as CategoryName FROM Transactions t LEFT JOIN Categories c ON t.CategoryId = c.Id WHERE t.UserId = @UserId AND t.Id = @TransactionId";
+                    using (SqlCommand command = new SqlCommand(sqlQuery, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserId", userId);
+                        command.Parameters.AddWithValue("@TransactionId", transactionId);
+
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                TransactionGet transaction = new TransactionGet
+                                {
+                                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                                    Date = reader.GetDateTime(reader.GetOrdinal("Date")),
+                                    Amount = reader.GetDecimal(reader.GetOrdinal("Amount")),
+                                    Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
+                                    CategoryName = reader.IsDBNull(reader.GetOrdinal("CategoryName")) ? null : reader.GetString(reader.GetOrdinal("CategoryName")),
+                                    IsIncome = reader.GetBoolean(reader.GetOrdinal("IsIncome")),
+                                    UserId = userId
+                                };
+
+                                return Ok(transaction);
+                            }
+                            else
+                            {
+                                return NotFound("Transaktion nicht gefunden.");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (SqlException ex)
+            {
+                return StatusCode(500, "Datenbankfehler aufgetreten: " + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "Interner Serverfehler: " + ex.Message);
+            }
+        }
+
+
 
         [HttpGet("transactions")]
         public ActionResult<IEnumerable<TransactionGet>> GetTransactions(int? categoryId = null, bool? isIncome = null)
@@ -241,7 +296,7 @@ namespace WebApplication_REST.Controllers
 
 
         [HttpPut]
-        public ActionResult<Transaction> Put(Transaction transaction)
+        public ActionResult<TransactionGet> Put(TransactionGet updatedTransaction)
         {
             try
             {
@@ -249,14 +304,16 @@ namespace WebApplication_REST.Controllers
                 {
                     connection.Open();
 
-                    string sqlQuery = "UPDATE Transactions SET Date = @Date, Amount = @Amount, Description = @Description WHERE Id = @Id";
+                    string sqlQuery = "UPDATE Transactions SET Date = @Date, Amount = @Amount, Description = @Description, CategoryId = @CategoryId, IsIncome = @IsIncome WHERE Id = @Id";
 
                     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
                     {
-                        command.Parameters.AddWithValue("@Id", transaction.Id);
-                        command.Parameters.AddWithValue("@Date", transaction.Date);
-                        command.Parameters.AddWithValue("@Amount", transaction.Amount);
-                        command.Parameters.AddWithValue("@Description", transaction.Description);
+                        command.Parameters.AddWithValue("@Id", updatedTransaction.Id);
+                        command.Parameters.AddWithValue("@Date", updatedTransaction.Date);
+                        command.Parameters.AddWithValue("@Amount", updatedTransaction.Amount);
+                        command.Parameters.AddWithValue("@Description", updatedTransaction.Description);
+                        command.Parameters.AddWithValue("@CategoryId", updatedTransaction.CategoryId);
+                        command.Parameters.AddWithValue("@IsIncome", updatedTransaction.IsIncome);
 
                         int rowsAffected = command.ExecuteNonQuery();
 
@@ -269,13 +326,14 @@ namespace WebApplication_REST.Controllers
                     connection.Close();
                 }
 
-                return Ok(transaction); 
+                return Ok(updatedTransaction);
             }
             catch (Exception ex)
             {
                 return BadRequest("Fehler beim Aktualisieren der Transaktion: " + ex.Message);
             }
         }
+
 
         [HttpDelete("{id}")]
         public ActionResult Delete(int id)
