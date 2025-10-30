@@ -1,0 +1,15 @@
+def between_20_and_50(lst: Iterable[float]) -> List[float]:
+    """Filter Werte im Bereich [20, 50]."""
+    return list(filter(lambda value: 20 <= value <= 50, lst))
+
+def multiply_by_2(lst: Iterable[float]) -> List[float]:
+    """Multipliziere jedes Element mit 2."""
+    return list(map(lambda value: value * 2, lst))
+
+def contains(element: T, lst: Iterable[T]) -> bool:
+    """Prüfe per reduce, ob element enthalten ist."""
+   return reduce(
+        lambda acc, x: acc or (x == element and type(x) == type(element)),
+        lst,
+        False
+    )
