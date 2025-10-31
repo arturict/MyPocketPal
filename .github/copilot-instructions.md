@@ -26,7 +26,8 @@ WebApplication_REST/
 │   ├── Transaction.cs
 │   ├── TransactionGet.cs
 │   ├── Category.cs
-│   └── Settings.cs
+│   ├── Settings.cs
+│   └── Class.cs         # Contains SessionMiddleware
 ├── Program.cs           # Application entry point and configuration
 └── appsettings.json     # Configuration settings
 ```
@@ -97,8 +98,11 @@ using (SqlConnection connection = new SqlConnection(_connectionString))
     
     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
     {
+        // Use AddWithValue for simple cases (current codebase pattern)
         command.Parameters.AddWithValue("@Id", id);
-        // Note: Consider using Parameters.Add with explicit SqlDbType for better type safety and performance
+        
+        // For better type safety and performance, consider:
+        // command.Parameters.Add("@Id", SqlDbType.UniqueIdentifier).Value = id;
         
         using (SqlDataReader reader = await command.ExecuteReaderAsync())
         {
