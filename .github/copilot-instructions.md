@@ -75,6 +75,9 @@ WebApplication_REST/
 - Use Claims-based authentication for user identity
 - Session management is configured with a 30-minute timeout
 - CORS is configured to allow specific origins from configuration
+- Always use parameterized queries (never string concatenation) to prevent SQL injection
+- Avoid exposing sensitive error details in API responses to clients
+- Log detailed error information server-side for debugging
 
 ### Models
 
@@ -95,6 +98,7 @@ using (SqlConnection connection = new SqlConnection(_connectionString))
     using (SqlCommand command = new SqlCommand(sqlQuery, connection))
     {
         command.Parameters.AddWithValue("@Id", id);
+        // Note: Consider using Parameters.Add with explicit SqlDbType for better type safety and performance
         
         using (SqlDataReader reader = await command.ExecuteReaderAsync())
         {
@@ -120,7 +124,9 @@ public async Task<ActionResult<ReturnType>> MethodName([FromQuery] parameters)
     }
     catch (Exception ex)
     {
-        return StatusCode(500, "Error message: " + ex.Message);
+        // Note: Log the full exception details server-side for debugging
+        // _logger.LogError(ex, "Error occurred while processing request");
+        return StatusCode(500, "An error occurred while processing your request.");
     }
 }
 ```
